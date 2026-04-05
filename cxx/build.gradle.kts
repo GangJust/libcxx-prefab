@@ -1,3 +1,7 @@
+import com.android.build.api.variant.LibraryAndroidComponentsExtension
+import org.gradle.kotlin.dsl.getByType
+import org.gradle.plugins.signing.Sign
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.maven.publish)
@@ -44,6 +48,8 @@ android {
 // NDK does not run strip on static libraries, do it ourselves
 open class ExecOperationsTask @Inject constructor(@Internal val execOperations: ExecOperations) : DefaultTask()
 
+val androidComponents = extensions.getByType<LibraryAndroidComponentsExtension>()
+val ndkDirProvider = androidComponents.sdkComponents.ndkDirectory
 val buildDirPath: File = project.layout.buildDirectory.asFile.get()
 val stripNativeRelease = tasks.register<ExecOperationsTask>("stripNativeRelease") {
     doLast {
@@ -60,7 +66,7 @@ val stripNativeRelease = tasks.register<ExecOperationsTask>("stripNativeRelease"
 
         val stripTree = fileTree(
             mapOf(
-                "dir" to android.ndkDirectory.resolve("toolchains/llvm/prebuilt"),
+                "dir" to ndkDirProvider.get().asFile.resolve("toolchains/llvm/prebuilt"),
                 "include" to listOf("**/llvm-objcopy.exe", "**/llvm-objcopy")
             )
         )
@@ -84,6 +90,14 @@ val stripNativeRelease = tasks.register<ExecOperationsTask>("stripNativeRelease"
 tasks.whenTaskAdded {
     if (name == "externalNativeBuildRelease") {
         finalizedBy(stripNativeRelease)
+    }
+}
+
+tasks.withType<Sign>().configureEach {
+    onlyIf {
+        gradle.startParameter.taskNames.none { taskName ->
+            taskName.endsWith("ToMavenLocal") || taskName == "publishToMavenLocal"
+        }
     }
 }
 
